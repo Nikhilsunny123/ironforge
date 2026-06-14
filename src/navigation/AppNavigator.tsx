@@ -122,9 +122,56 @@ const TabNavigator = () => {
   );
 };
 
+import * as Linking from 'expo-linking';
+import { supabase } from '../services/supabase';
+
 // Root Stack Navigator Component
 export const AppNavigator = () => {
   const { user, isGuest } = useAuthStore();
+
+  React.useEffect(() => {
+    const parseAuthUrl = (url: string) => {
+      const params: { [key: string]: string } = {};
+      const queryPart = url.split('#')[1] || url.split('?')[1];
+      if (queryPart) {
+        queryPart.split('&').forEach((param) => {
+          const [key, val] = param.split('=');
+          if (key && val) {
+            params[key] = decodeURIComponent(val);
+          }
+        });
+      }
+      return params;
+    };
+
+    const handleDeepLink = async (event: { url: string }) => {
+      const params = parseAuthUrl(event.url);
+      const { access_token, refresh_token } = params;
+      if (access_token && refresh_token) {
+        try {
+          const { error } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+          if (error) throw error;
+        } catch (err) {
+          console.error('Failed to set session from deep link:', err);
+        }
+      }
+    };
+
+    // Handle deep links when app was opened via link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink({ url });
+      }
+    });
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return (
     <NavigationContainer>

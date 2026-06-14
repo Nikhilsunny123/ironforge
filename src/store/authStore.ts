@@ -9,6 +9,25 @@ import { useSyncStore } from './syncStore';
 import { useSettingsStore } from './settingsStore';
 import { syncService } from '../services/syncService';
 
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const extractParamsFromUrl = (url: string) => {
+  const params: { [key: string]: string } = {};
+  const queryPart = url.split('#')[1] || url.split('?')[1];
+  if (queryPart) {
+    queryPart.split('&').forEach((param) => {
+      const [key, val] = param.split('=');
+      if (key && val) {
+        params[key] = decodeURIComponent(val);
+      }
+    });
+  }
+  return params;
+};
+
 export interface AuthState {
   user: SupabaseUser | null;
   isGuest: boolean;
@@ -74,11 +93,35 @@ export const useAuthStore = create<AuthState>()(
       signInWithGoogle: async () => {
         set({ isLoading: true, error: null });
         try {
+          const redirectUrl = Linking.createURL('auth-callback');
           const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
+            options: {
+              redirectTo: redirectUrl,
+              skipBrowserRedirect: true,
+            },
           });
           if (error) throw error;
-          return data;
+
+          if (data?.url) {
+            const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+            if (result.type === 'success' && result.url) {
+              const params = extractParamsFromUrl(result.url);
+              const { access_token, refresh_token } = params;
+              if (access_token && refresh_token) {
+                const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                  access_token,
+                  refresh_token,
+                });
+                if (sessionError) throw sessionError;
+                if (sessionData.user) {
+                  set({ user: sessionData.user, isGuest: false });
+                }
+                return sessionData;
+              }
+            }
+          }
+          return null;
         } catch (err: any) {
           set({ error: err.message || 'Failed to sign in with Google' });
           throw err;

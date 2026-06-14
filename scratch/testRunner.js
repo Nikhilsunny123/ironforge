@@ -208,6 +208,20 @@ Module.prototype.require = function (id) {
   if (id === 'expo-notifications') {
     return mockExpoNotifications;
   }
+  if (id === 'expo-web-browser') {
+    return {
+      maybeCompleteAuthSession: () => {},
+      openAuthSessionAsync: async (url, redirectUrl) => ({ type: 'cancel' }),
+    };
+  }
+  if (id === 'expo-linking') {
+    return {
+      createURL: (path) => `ironforge://${path}`,
+      parse: (url) => ({ hostname: '', path: '', queryParams: {} }),
+      addEventListener: (type, handler) => ({ remove: () => {} }),
+      getInitialURL: async () => null,
+    };
+  }
   return originalRequire.apply(this, arguments);
 };
 
